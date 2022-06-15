@@ -9,6 +9,8 @@ void sender(void *params)
     while(true)
     {
         xTaskNotifyGive(receiverHandle);
+        xTaskNotifyGive(receiverHandle);
+        xTaskNotifyGive(receiverHandle);
         vTaskDelay(5000/portTICK_PERIOD_MS);
     }
 }
@@ -17,10 +19,11 @@ void receiver(void *params)
 {
     while(true)
     {
-        ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
-        printf("received notification\n");
+        int count = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        printf("received notification %d\n", count);
     }
 }
+
 void app_main(void)
 {
     printf("in main task\n");
