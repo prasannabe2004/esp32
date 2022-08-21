@@ -1,0 +1,24 @@
+menu "Networking Features"
+    menu IPV6
+        config IPV6_SUPPORT
+            bool "Enable or Disable IPv6"
+            default  n
+            help
+                This flag enables or disables IPv6 feature
+        config NUM_OF_IPV6_ADDR
+            int "NUmber of IPv6 Addresses"
+            range 1 3
+            default 1
+            help
+                Number of IPv6 address can be used
+        config DHCPV6_MODE
+            choice
+                bool "Select a Choice"
+                    default DHCP
+                config STATIC
+                    bool "Static IPv6 Assignment"
+                config DHCP
+                    bool "Dynamic IPv6 Assignment"
+            endchoice
+    endmenu
+endmenu
