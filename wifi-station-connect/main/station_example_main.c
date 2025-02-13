@@ -1,48 +1,35 @@
-// wifi_tutorial.c
 #include <stdio.h>
-
-#include "esp_log.h"
-#include "esp_wifi.h"
-
-#include "freertos/task.h"
-
-#define TAG "WIFI_STAION"
-
-#include "esp_err.h"
-#include "esp_log.h"
-
-#include "nvs_flash.h"
-#include "esp_event.h"
-#include "esp_wifi.h"
-
-#include "freertos/FreeRTOS.h"
-
-esp_err_t tutorial_init(void);
-
-esp_err_t tutorial_connect(char* wifi_ssid, char* wifi_password);
-
-esp_err_t tutorial_disconnect(void);
-
-esp_err_t tutorial_deinit(void);
-
 #include <inttypes.h>
 #include <string.h>
 
+#include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_err.h"
+#include "nvs_flash.h"
+#include "esp_event.h"
+
+#include "freertos/task.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
+#define TAG "WIFI_STATION"
+#define WIFI_SSID "CA2BLR1_4G"
+#define WIFI_PASSWORD "minjursaranya"
 #define WIFI_AUTHMODE WIFI_AUTH_WPA2_PSK
-
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
 static const int WIFI_RETRY_ATTEMPT = 3;
 static int wifi_retry_count = 0;
-
-static esp_netif_t *tutorial_netif = NULL;
+static esp_netif_t *wifi_netif = NULL;
 static esp_event_handler_instance_t ip_event_handler;
 static esp_event_handler_instance_t wifi_event_handler;
-
 static EventGroupHandle_t s_wifi_event_group = NULL;
+
+esp_err_t wifiinit(void);
+esp_err_t wificonnect(char* wifi_ssid, char* wifi_password);
+esp_err_t wifidisconnect(void);
+esp_err_t wifideinit(void);
 
 static void ip_event_cb(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
@@ -113,9 +100,8 @@ static void wifi_event_cb(void *arg, esp_event_base_t event_base, int32_t event_
 }
 
 
-esp_err_t tutorial_init(void)
+esp_err_t wifiinit(void)
 {
-    // Initialize Non-Volatile Storage (NVS)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -142,13 +128,12 @@ esp_err_t tutorial_init(void)
         return ret;
     }
 
-    tutorial_netif = esp_netif_create_default_wifi_sta();
-    if (tutorial_netif == NULL) {
+    wifi_netif = esp_netif_create_default_wifi_sta();
+    if (wifi_netif == NULL) {
         ESP_LOGE(TAG, "Failed to create default WiFi STA interface");
         return ESP_FAIL;
     }
 
-    // Wi-Fi stack configuration parameters
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
@@ -165,7 +150,7 @@ esp_err_t tutorial_init(void)
     return ret;
 }
 
-esp_err_t tutorial_connect(char* wifi_ssid, char* wifi_password)
+esp_err_t wificonnect(char* wifi_ssid, char* wifi_password)
 {
     wifi_config_t wifi_config = {
         .sta = {
@@ -179,7 +164,6 @@ esp_err_t tutorial_connect(char* wifi_ssid, char* wifi_password)
 
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); // default is WIFI_PS_MIN_MODEM
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM)); // default is WIFI_STORAGE_FLASH
-
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
@@ -201,7 +185,7 @@ esp_err_t tutorial_connect(char* wifi_ssid, char* wifi_password)
     return ESP_FAIL;
 }
 
-esp_err_t tutorial_disconnect(void)
+esp_err_t wifidisconnect(void)
 {
     if (s_wifi_event_group) {
         vEventGroupDelete(s_wifi_event_group);
@@ -210,7 +194,7 @@ esp_err_t tutorial_disconnect(void)
     return esp_wifi_disconnect();
 }
 
-esp_err_t tutorial_deinit(void)
+esp_err_t wifideinit(void)
 {
     esp_err_t ret = esp_wifi_stop();
     if (ret == ESP_ERR_WIFI_NOT_INIT) {
@@ -219,8 +203,8 @@ esp_err_t tutorial_deinit(void)
     }
 
     ESP_ERROR_CHECK(esp_wifi_deinit());
-    ESP_ERROR_CHECK(esp_wifi_clear_default_wifi_driver_and_handlers(tutorial_netif));
-    esp_netif_destroy(tutorial_netif);
+    ESP_ERROR_CHECK(esp_wifi_clear_default_wifi_driver_and_handlers(wifi_netif));
+    esp_netif_destroy(wifi_netif);
 
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID, ip_event_handler));
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler));
@@ -229,16 +213,11 @@ esp_err_t tutorial_deinit(void)
 }
 
 
-// Enter the Wi-Fi credentials here
-#define WIFI_SSID "Mobile"
-#define WIFI_PASSWORD "Crimping@@2020"
-
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting tutorial...");
-    ESP_ERROR_CHECK(tutorial_init());
+    ESP_ERROR_CHECK(wifiinit());
 
-    esp_err_t ret = tutorial_connect(WIFI_SSID, WIFI_PASSWORD);
+    esp_err_t ret = wificonnect(WIFI_SSID, WIFI_PASSWORD);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to connect to Wi-Fi network");
     }
@@ -251,19 +230,17 @@ void app_main(void)
     else if (ret == ESP_ERR_WIFI_NOT_CONNECT) {
         ESP_LOGE(TAG, "Wi-Fi station is not connected");
     } else {
-        ESP_LOGI(TAG, "--- Access Point Information ---");
-        ESP_LOG_BUFFER_HEX("MAC Address", ap_info.bssid, sizeof(ap_info.bssid));
-        ESP_LOG_BUFFER_CHAR("SSID", ap_info.ssid, sizeof(ap_info.ssid));
-        ESP_LOGI(TAG, "Primary Channel: %d", ap_info.primary);
-        ESP_LOGI(TAG, "RSSI: %d", ap_info.rssi);
-
+        ESP_LOGI(TAG, "AP Info:");
+        ESP_LOG_BUFFER_HEX("MAC Address\t", ap_info.bssid, sizeof(ap_info.bssid));
+        ESP_LOG_BUFFER_CHAR("SSID\t\t", ap_info.ssid, sizeof(ap_info.ssid));
+        ESP_LOGI(TAG, "Primary Channel: %d\t", ap_info.primary);
+        ESP_LOGI(TAG, "RSSI: %d\t\t", ap_info.rssi);
+        ESP_LOGI(TAG, "Bandwidth: %d\t\t", ap_info.bandwidth);
+        ESP_LOG_BUFFER_CHAR("Country Code: \t", ap_info.country.cc, sizeof(ap_info.country.cc));
         ESP_LOGI(TAG, "Disconnecting in 5 seconds...");
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 
-    ESP_ERROR_CHECK(tutorial_disconnect());
-
-    ESP_ERROR_CHECK(tutorial_deinit());
-
-    ESP_LOGI(TAG, "End of tutorial...");
+    ESP_ERROR_CHECK(wifidisconnect());
+    ESP_ERROR_CHECK(wifideinit());
 }
