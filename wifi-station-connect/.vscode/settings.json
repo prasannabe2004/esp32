@@ -6,5 +6,8 @@
     ],
     "idf.port": "/dev/ttyUSB0",
     "idf.toolsPath": "/home/ANT.AMAZON.COM/ppadmoh/esp/esp-idf/tools",
-    "idf.flashType": "UART"
+    "idf.flashType": "UART",
+    "files.associations": {
+        "nvs_flash.h": "c"
+    }
 }
