@@ -1,0 +1,35 @@
+menu "Custom WiFi Configuration"
+
+    config CUSTOM_WIFI_SSID
+        string "WiFi SSID"
+        default "MyESP32WiFi"
+        help
+            Set the SSID for the WiFi connection.
+    
+    config CUSTOM_WIFI_PASSWORD
+        string "WiFi Password"
+        default "password123"
+        help
+            Set the password for the WiFi connection.
+
+    config CUSTOM_WIFI_SNIFF_CHANNEL
+        int "WiFi Sniffing Channel"
+        default 1
+        help
+            Set the channel number to sniff.
+
+    config CUSTOM_WIFI_MAX_RETRIES
+        int "Maximum WiFi Connection Retries"
+        range 1 10
+        default 5
+        help
+            Define how many times the device should retry connecting to WiFi.
+    
+    config CUSTOM_ENABLE_DEBUG
+        bool "Enable Debug Logging"
+        default n
+        help
+            Enable detailed debug logs for troubleshooting.
+    
+    endmenu
+    

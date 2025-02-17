@@ -1,19 +1,49 @@
-#include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
+#include "utils.h"
 
-#include "lwip/err.h"
-#include "lwip/sys.h"
+static const char *TAG = "WIFI_SNIFFER";
+static TaskHandle_t xHandle_led = NULL;
 
-#define EXAMPLE_ESP_WIFI_SSID      "Mobile"
-#define EXAMPLE_ESP_WIFI_PASS      "Crimping@@2020"
+static void blink_task(void *pvParameter)
+{
+    gpio_pad_select_gpio(BLINK_GPIO);
 
-static const char *TAG = "wifi_station_sniffer";
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+
+    while(true){
+        /* Blink off (output low) */
+        gpio_set_level(BLINK_GPIO, 0);
+        vTaskDelay(BLINK_TIME_OFF / portTICK_PERIOD_MS);
+
+        /* Blink on (output high) */
+        gpio_set_level(BLINK_GPIO, 1);
+        vTaskDelay(BLINK_TIME_ON / portTICK_PERIOD_MS);
+    }
+}
+
+void set_blink_led(int state)
+{
+	switch(state){
+		case BLINK_MODE: //blink
+			BLINK_TIME_OFF = 1000;
+			BLINK_TIME_ON = 1000;
+			break;
+		case ON_MODE: //always on
+			BLINK_TIME_OFF = 5;
+			BLINK_TIME_ON = 2000;
+			break;
+		case OFF_MODE: //always off
+			BLINK_TIME_OFF = 2000;
+			BLINK_TIME_ON = 5;
+			break;
+		case STARTUP_MODE: //fast blink
+			BLINK_TIME_OFF = 100;
+			BLINK_TIME_ON = 100;
+			break;
+		default:
+			break;
+	}
+}
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
@@ -21,63 +51,36 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+		set_blink_led(OFF_MODE);
         esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+		set_blink_led(ON_MODE);
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "Got IP:" IPSTR, IP2STR(&event->ip_info.ip));
+		ESP_LOGI(TAG, "Station Info:");
+		wifi_config_t wifi_config;
+		esp_err_t ret = esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
+		if (ret == ESP_OK) {
+			ESP_LOGI(TAG, "Wi-Fi SSID: %s", wifi_config.sta.ssid);
+			ESP_LOGI(TAG, "Wi-Fi Password: %s", wifi_config.sta.password);
+			ESP_LOGI(TAG, "Wi-Fi Scan Method: %d", wifi_config.sta.scan_method);
+
+		} else {
+			printf("Failed to get Wi-Fi config, error: %d\n", ret);
+		}
+        ESP_LOGI(TAG, "IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
+		wifi_ap_record_t ap_info;
+		ret = esp_wifi_sta_get_ap_info(&ap_info);
+		ESP_LOGI(TAG, "AP Info:");
+		ESP_LOG_BUFFER_HEX("MAC Address\t", ap_info.bssid, sizeof(ap_info.bssid));
+		ESP_LOG_BUFFER_CHAR("SSID\t\t", ap_info.ssid, sizeof(ap_info.ssid));
+		ESP_LOGI(TAG, "Primary Channel: %d\t", ap_info.primary);
+		ESP_LOGI(TAG, "RSSI: %d\t\t", ap_info.rssi);
+		ESP_LOGI(TAG, "Bandwidth: %d\t\t", ap_info.bandwidth);
+		ESP_LOG_BUFFER_CHAR("Country Code: \t", ap_info.country.cc, sizeof(ap_info.country.cc));
     }
 }
-#define SSID_MAX_LEN (32+1) //max length of a SSID
-#define MD5_LEN (32+1) //length of md5 hash
-#define BUFFSIZE 1024 //size of buffer used to send data to the server
-#define NROWS 11 //max rows that buffer can have inside send_data, it can be changed modifying BUFFSIZE
-#define MAX_FILES 3 //max number of files in SPIFFS partition
-typedef struct {
-	int16_t fctl; //frame control
-	int16_t duration; //duration id
-	uint8_t da[6]; //receiver address
-	uint8_t sa[6]; //sender address
-	uint8_t bssid[6]; //filtering address
-	int16_t seqctl; //sequence control
-	unsigned char payload[]; //network data
-} __attribute__((packed)) wifi_mgmt_hdr;
-static void get_ssid(unsigned char *data, char ssid[SSID_MAX_LEN], uint8_t ssid_len)
-{
-	int i, j;
 
-	for(i=26, j=0; i<26+ssid_len; i++, j++){
-		ssid[j] = data[i];
-	}
 
-	ssid[j] = '\0';
-}
-
-static int get_sn(unsigned char *data)
-{
-	int sn;
-    char num[5] = "\0";
-
-	sprintf(num, "%02x%02x", data[22], data[23]);
-    sscanf(num, "%x", &sn);
-
-    return sn;
-}
-
-static void get_ht_capabilites_info(unsigned char *data, char htci[5], int pkt_len, int ssid_len)
-{
-	int ht_start = 25+ssid_len+19;
-
-	/* 1) data[ht_start-1] is the byte that says if HT Capabilities is present or not (tag length).
-	 * 2) I need to check also that i'm not outside the payload: if HT Capabilities is not present in the packet,
-	 * for this reason i'm considering the ht_start must be lower than the total length of the packet less the last 4 bytes of FCS */
-
-	if(data[ht_start-1]>0 && ht_start<pkt_len-4){ //HT capabilities is present
-		if(data[ht_start-4] == 1) //DSSS parameter is set -> need to shift of three bytes
-			sprintf(htci, "%02x%02x", data[ht_start+3], data[ht_start+1+3]);
-		else
-			sprintf(htci, "%02x%02x", data[ht_start], data[ht_start+1]);
-	}
-}
 void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
 {
 	int pkt_len, fc, sn=0;
@@ -103,9 +106,9 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
 		sn = get_sn(pkt->payload);
 
 		get_ht_capabilites_info(pkt->payload, htci, pkt_len, ssid_len);
-		if(ssid_len > 1) {
-		ESP_LOGI(TAG, "ADDR=%02x:%02x:%02x:%02x:%02x:%02x, "
+			ESP_LOGI(TAG, "ADDR=%02x:%02x:%02x:%02x:%02x:%02x, "
 				"SSID=%s, "
+				"CHANNEL=%d, "
 				"TIMESTAMP=%d, "
 				"HASH=%s, "
 				"RSSI=%02d, "
@@ -113,17 +116,25 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
 				"HT CAP. INFO=%s",
 				mgmt->sa[0], mgmt->sa[1], mgmt->sa[2], mgmt->sa[3], mgmt->sa[4], mgmt->sa[5],
 				ssid,
+				pkt->rx_ctrl.channel,
 				(int)ts,
 				hash,
 				pkt->rx_ctrl.rssi,
 				sn,
 				htci);
-		}
 	}
 }
 
 void sniffer_task(void *pvParameters)
 {
+	// Set promiscuous mode
+	esp_wifi_set_promiscuous(true);
+	esp_wifi_set_promiscuous_rx_cb(&wifi_sniffer_packet_handler);
+
+	// Not useful because whichever the channel it is associated
+	// as STA only it can sniff
+	esp_wifi_set_channel(CONFIG_CUSTOM_WIFI_SNIFF_CHANNEL, WIFI_SECOND_CHAN_NONE); //only set the primary channel
+
     while (1) {
         // Your sniffer logic here
         vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -160,8 +171,8 @@ void app_main(void)
     // Configure WiFi station
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = EXAMPLE_ESP_WIFI_SSID,
-            .password = EXAMPLE_ESP_WIFI_PASS,
+            .ssid = CONFIG_CUSTOM_WIFI_SSID,
+            .password = CONFIG_CUSTOM_WIFI_PASSWORD,
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -170,12 +181,15 @@ void app_main(void)
     // Start WiFi
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    // Set promiscuous mode
-    esp_wifi_set_promiscuous(true);
-    esp_wifi_set_promiscuous_rx_cb(&wifi_sniffer_packet_handler);
+	ESP_LOGI(TAG, "Starting Blink task...");
+	xTaskCreate(&blink_task, "blink_task", configMINIMAL_STACK_SIZE, NULL, 5, &xHandle_led);
+	set_blink_led(STARTUP_MODE);
 
-    // Create sniffer task
-    xTaskCreatePinnedToCore(&sniffer_task, "sniffer_task", 2048, NULL, 5, NULL, 0);
+	ESP_LOGI(TAG, "Starting Sniffing task...");
+	xTaskCreate(&sniffer_task, "sniffing_task", 2048, NULL, 5, NULL);
 
-    ESP_LOGI(TAG, "WiFi station and sniffer started");
+	ESP_LOGI(TAG, "Starting Main task...");
+	while(1){ //every 0.5s check if fatal error occurred
+		vTaskDelay(500 / portTICK_PERIOD_MS);
+	}
 }
