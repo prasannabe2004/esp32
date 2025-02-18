@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "rom/gpio.h"
+#include "esp_sntp.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -26,3 +27,4 @@ void get_ssid(unsigned char *data, char ssid[SSID_MAX_LEN], uint8_t ssid_len);
 int get_sn(unsigned char *data);
 void get_ht_capabilites_info(unsigned char *data, char htci[5], int pkt_len, int ssid_len);
 void dumb(unsigned char *data, int len);
+void obtain_time(void);

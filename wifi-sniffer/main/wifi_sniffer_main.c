@@ -181,6 +181,8 @@ void app_main(void)
     // Start WiFi
     ESP_ERROR_CHECK(esp_wifi_start());
 
+    obtain_time();
+
 	ESP_LOGI(TAG, "Starting Blink task...");
 	xTaskCreate(&blink_task, "blink_task", configMINIMAL_STACK_SIZE, NULL, 5, &xHandle_led);
 	set_blink_led(STARTUP_MODE);
