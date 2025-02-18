@@ -14,6 +14,9 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "mqtt_client.h"
+
+
 /* --- LED variables --- */
 #define BLINK_GPIO 2 //LED pin definition
 #define BLINK_MODE 0

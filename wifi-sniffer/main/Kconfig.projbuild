@@ -18,6 +18,18 @@ menu "Custom WiFi Configuration"
         help
             Set the channel number to sniff.
 
+    config CUSTOM_WIFI_SNIFF_TIME
+        int "WiFi Sniffing Time"
+        default 10
+        help
+            Set the sniffing time.
+
+    config CUSTOM_WIFI_SNIFFING_SSID
+        string "WiFi Sniffing SSID"
+        default "Mobile"
+        help
+            Set the SSID to sniff.
+            
     config CUSTOM_WIFI_MAX_RETRIES
         int "Maximum WiFi Connection Retries"
         range 1 10
